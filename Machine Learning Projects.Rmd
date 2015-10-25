@@ -1,0 +1,67 @@
+First we set the seed, loaded in the data and did some data analysis. We evaluated the data and in looking at the summary determined that there are a number of columns where a majority (19216 of 19622) of the obsrvations were NAs or were blank. 
+
+```{r, echo = FALSE}
+set.seed(11245)
+require(caret)
+trn <- read.csv("pml-training.csv")
+tst <- read.csv("pml-testing.csv")
+```
+
+
+The data was subsetted so that these variables were removed from both our training set and our test set and that the variables username, timestamp, and the row identified were removed.   
+```{r, echo = FALSE}
+sub <- data.frame()
+cols <- NULL
+for (i in 6:ncol(trn)){
+        x <- trn[,i]
+        y <- summary(is.na(x))
+        if (y[2] == nrow(trn)) {cols <- c(cols, i) }
+}
+sub <- trn[, cols]
+sub_test <- tst[, cols]
+cols <- NULL
+for(i in 1:ncol(sub)){
+        x <- sub[, i]
+        z <- as.character(x)
+        y <- length(z[z == ""])
+        if (y == 0) {cols <- c(cols, i)}
+}
+sub <- sub[, cols]
+sub_test <- sub_test[, cols]
+colum <- ncol(sub) -1
+```
+This lead to a data frame with 'r colum' predictors and the outcome (classe). 
+
+The training set was then broken up into a test and training set to estimate out-of-model error. Due to memory issues with my computer and time constraints the number of samples used in the training set was really small (smaller than reccomended).  
+
+```{r, echo=T}
+inTrain <- createDataPartition(y = sub[,55], p =0.05, list = FALSE)
+subT_train <- sub[inTrain,]
+subT_test <- sub[-inTrain,]
+```
+
+A random forest model was created using these 'r colum' predictors to predict the classe outcome. The random forest model was used because it is often one of the best models used in predicting outcomes for competitions (Coursera Machine Learning Class). 5-fold cross validation was used within the train call on the training data to fit the model. Thus 5-fold cross validation was utilized to optimize the model.This method was used instead of k-validation to save computational time.   
+
+
+```{r, cache = TRUE}
+modFit <- train(classe~., data = subT_train, method = "rf", prox = T, trControl=trainControl(method="cv",number=5), allowParallel = TRUE)
+modFit$finalModel
+```
+
+The test set taken from the training set was used to calculate the out of sample error for the model. 
+
+```{r, echo =TRUE}
+pred <- predict(modFit, subT_test)
+table(subT_test$classe, pred)
+OSE <- (1- mean(subT_test$classe == pred))*100
+```
+
+The out of sample error for this model is `r OSE`%. This is a good out of sample error rate as it is less than 10%. This likely would have been lower if more observations had been used for the training set. The model was then used on the test set provided to make predictions for the submission porition of this project, which were submtited to Coursera. 
+
+```{r, echo = T}
+test_res <- predict(modFit, sub_test)
+for(i in 1:20){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(test_res[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+}
+```
